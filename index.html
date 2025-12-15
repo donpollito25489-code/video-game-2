@@ -2,32 +2,43 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Mini Fortnite 50 Players</title>
+<title>Mini Fortnite Upgraded 2.0</title>
 <style>
 body { margin:0; overflow:hidden; cursor:crosshair; }
-#ui { position:fixed; top:10px; left:10px; color:white; font-family:Arial; font-size:18px; z-index:10; }
+#ui {
+  position:fixed;
+  top:10px; left:10px; color:white;
+  font-family:Arial; font-size:18px; z-index:10;
+}
+#miniMap {
+  position:fixed; top:10px; right:10px;
+  width:150px; height:150px; background:rgba(0,0,0,0.5);
+  z-index:10;
+}
 </style>
 </head>
 <body>
 <div id="ui">
-Health: <span id="health">100</span> | Damage: <span id="damage">1</span> | Score: <span id="score">0</span>
+Health: <span id="health">100</span> | Damage: <span id="damage">1</span> | Score: <span id="score">0</span> | Weapon: <span id="weapon">AR</span>
 </div>
+<canvas id="miniMap"></canvas>
 <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
 <script>
+
 /* ---------- SCENE ---------- */
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
 const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(innerWidth,innerHeight);
-renderer.shadowMap.enabled=true;
+renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 
 /* ---------- LIGHT ---------- */
 scene.add(new THREE.AmbientLight(0xffffff,0.5));
 const sun = new THREE.DirectionalLight(0xffffff,1);
 sun.position.set(50,100,50);
-sun.castShadow=true;
+sun.castShadow = true;
 scene.add(sun);
 
 /* ---------- TERRAIN ---------- */
@@ -40,44 +51,25 @@ terrain.rotation.x = -Math.PI/2;
 terrain.receiveShadow=true;
 scene.add(terrain);
 
-/* ---------- SNOW PARTICLES ---------- */
-let snowParticles=[];
-const snowCount=1000;
-const snowGeometry=new THREE.BufferGeometry();
-const snowPositions=new Float32Array(snowCount*3);
-for(let i=0;i<snowCount*3;i+=3){
-  snowPositions[i]=Math.random()*mapSize-mapSize/2;
-  snowPositions[i+1]=Math.random()*50;
-  snowPositions[i+2]=Math.random()*mapSize-mapSize/2;
-}
-snowGeometry.setAttribute('position',new THREE.BufferAttribute(snowPositions,3));
-const snowMaterial=new THREE.PointsMaterial({color:0xffffff,size:0.3});
-const snowSystem=new THREE.Points(snowGeometry,snowMaterial);
-scene.add(snowSystem);
-
-/* ---------- BUILDINGS ---------- */
+/* ---------- BUILDINGS & CHESTS ---------- */
 const buildings=[];
+const chests=[];
 function createBuilding(x,z,w,h,d){
   const b=new THREE.Mesh(
     new THREE.BoxGeometry(w,h,d),
     new THREE.MeshStandardMaterial({color:0xaaaaaa})
   );
-  b.position.set(x,h/2,z);
-  b.castShadow=true;
-  scene.add(b);
-  buildings.push(b);
-  // Add a chest inside
+  b.position.set(x,h/2,z); b.castShadow=true;
+  scene.add(b); buildings.push(b);
+
   const c=new THREE.Mesh(
     new THREE.BoxGeometry(1,1,1),
     new THREE.MeshStandardMaterial({color:0xffd700})
   );
   c.position.set(x,1.5,z);
-  scene.add(c);
-  chests.push(c);
+  scene.add(c); chests.push(c);
 }
-const chests=[];
-
-// Example buildings with chests
+// Scatter buildings
 for(let i=-80;i<=80;i+=40){
   for(let j=-80;j<=80;j+=40){
     if(Math.random()>0.3) createBuilding(i,j,6,10+Math.random()*15,6);
@@ -86,11 +78,11 @@ for(let i=-80;i<=80;i+=40){
 
 /* ---------- TREES & ROCKS ---------- */
 function createTree(x,z,isSnow=false){
-  const trunk=new THREE.Mesh(
+  const trunk = new THREE.Mesh(
     new THREE.CylinderGeometry(0.3,0.4,3),
     new THREE.MeshStandardMaterial({color:0x8b4513})
   );
-  const leaves=new THREE.Mesh(
+  const leaves = new THREE.Mesh(
     new THREE.SphereGeometry(1.5),
     new THREE.MeshStandardMaterial({color:isSnow?0xffffff:0x228b22})
   );
@@ -129,6 +121,7 @@ function createPlayer(color=0x0000ff){
   );
   head.position.y=1.4;
   g.add(head);
+  g.userData={health:100};
   return g;
 }
 const player=createPlayer();
@@ -142,7 +135,7 @@ document.body.addEventListener("click",()=>document.body.requestPointerLock());
 document.addEventListener("mousemove",e=>{
   if(document.pointerLockElement!==document.body)return;
   yaw -= e.movementX*0.002;
-  pitch -= e.movementY*0.002; // Correct: moving down looks down
+  pitch -= e.movementY*0.002;
   pitch=Math.max(-1.2,Math.min(1.2,pitch));
 });
 
@@ -156,7 +149,19 @@ let vy=0,onGround=true;
 const gravity=-0.02;
 const jumpPower=0.35;
 
-/* ---------- BULLETS ---------- */
+/* ---------- WEAPONS & BULLETS ---------- */
+const weapons = {
+  AR:{damage:1,speed:0.8},
+  Shotgun:{damage:3,speed:0.5}
+};
+let currentWeapon="AR";
+
+document.addEventListener("keydown",e=>{
+  if(e.key==="1") currentWeapon="AR";
+  if(e.key==="2") currentWeapon="Shotgun";
+  document.getElementById("weapon").textContent=currentWeapon;
+});
+
 const bullets=[];
 document.addEventListener("mousedown",()=>{
   const b=new THREE.Mesh(
@@ -165,7 +170,7 @@ document.addEventListener("mousedown",()=>{
   );
   b.position.copy(player.position).add(new THREE.Vector3(0,1,0));
   const dir=new THREE.Vector3(Math.sin(yaw),0,-Math.cos(yaw));
-  b.userData.vel=dir.multiplyScalar(0.8);
+  b.userData={vel:dir.multiplyScalar(weapons[currentWeapon].speed),damage:weapons[currentWeapon].damage};
   scene.add(b);
   bullets.push(b);
 });
@@ -176,7 +181,7 @@ for(let i=0;i<50;i++){
   const isGood=Math.random()>0.5;
   const e=createPlayer(isGood?0xff0000:0xff5555);
   e.position.set(Math.random()*mapSize-mapSize/2,1,Math.random()*mapSize-mapSize/2);
-  e.userData={good:isGood};
+  e.userData={good:isGood,health:50};
   scene.add(e);
   enemies.push(e);
 }
@@ -185,11 +190,24 @@ for(let i=0;i<50;i++){
 let stormRadius=200;
 const storm=new THREE.Mesh(
   new THREE.SphereGeometry(stormRadius,32,32),
-  new THREE.MeshBasicMaterial({
-    color:0x8000ff,transparent:true,opacity:0.15,side:THREE.BackSide
-  })
+  new THREE.MeshBasicMaterial({color:0x8000ff,transparent:true,opacity:0.15,side:THREE.BackSide})
 );
 scene.add(storm);
+
+/* ---------- SNOW PARTICLES ---------- */
+let snowParticles=[];
+const snowCount=1000;
+const snowGeometry=new THREE.BufferGeometry();
+const snowPositions=new Float32Array(snowCount*3);
+for(let i=0;i<snowCount*3;i+=3){
+  snowPositions[i]=Math.random()*mapSize-mapSize/2;
+  snowPositions[i+1]=Math.random()*50;
+  snowPositions[i+2]=Math.random()*mapSize-mapSize/2;
+}
+snowGeometry.setAttribute('position',new THREE.BufferAttribute(snowPositions,3));
+const snowMaterial=new THREE.PointsMaterial({color:0xffffff,size:0.3});
+const snowSystem=new THREE.Points(snowGeometry,snowMaterial);
+scene.add(snowSystem);
 
 /* ---------- GAME STATE ---------- */
 let health=100,damage=1,score=0;
@@ -200,7 +218,8 @@ const scoreEl=document.getElementById("score");
 /* ---------- UPDATE LOOP ---------- */
 function update(){
   // Movement
-  const speed=0.2;
+  let speed=0.2;
+  if(player.position.x>50 && player.position.z>50) speed=0.15; // snow biome slower
   const forward=new THREE.Vector3(Math.sin(yaw),0,-Math.cos(yaw));
   const right=new THREE.Vector3(Math.cos(yaw),0,Math.sin(yaw));
   if(keys.w) player.position.add(forward.clone().multiplyScalar(speed));
@@ -214,24 +233,27 @@ function update(){
   // Camera
   camera.position.copy(player.position).add(new THREE.Vector3(Math.sin(yaw)*cameraOffset.z,cameraOffset.y+pitch*3,-Math.cos(yaw)*cameraOffset.z));
   camera.lookAt(player.position.x,player.position.y+1.5,player.position.z);
+
   // Player bullets
   bullets.forEach((b,i)=>{
     b.position.add(b.userData.vel);
     enemies.forEach((e,j)=>{
       if(b.position.distanceTo(e.position)<1){
-        scene.remove(e);
-        enemies.splice(j,1);
-        scene.remove(b);
-        bullets.splice(i,1);
-        score++;
-        scoreEl.textContent=score;
+        e.userData.health -= b.userData.damage;
+        if(e.userData.health<=0){
+          scene.remove(e); enemies.splice(j,1);
+          if(Math.random()>0.5){damage++; dmgEl.textContent=damage;} // loot drop
+          score++; scoreEl.textContent=score;
+        }
+        scene.remove(b); bullets.splice(i,1);
       }
     });
   });
+
   // Enemy AI
   enemies.forEach(e=>{
     const dir=player.position.clone().sub(e.position).normalize();
-    if(e.userData.good) e.position.add(dir.multiplyScalar(0.04));
+    if(e.userData.good) e.position.add(dir.clone().multiplyScalar(0.04));
     else e.position.add(new THREE.Vector3(Math.random()*0.02-0.01,0,Math.random()*0.02-0.01));
     // Enemy shooting
     if(Math.random()<0.01){
@@ -240,19 +262,21 @@ function update(){
         new THREE.MeshBasicMaterial({color:0xff0000})
       );
       eb.position.copy(e.position).add(new THREE.Vector3(0,1,0));
-      eb.userData.vel=dir.clone().multiplyScalar(0.5);
+      eb.userData={vel:dir.clone().multiplyScalar(0.5),damage:1};
       scene.add(eb);
       enemyBullets.push(eb);
     }
   });
+
   // Enemy bullets
   enemyBullets.forEach((b,i)=>{
     b.position.add(b.userData.vel);
     if(b.position.distanceTo(player.position)<1){
-      health-=1; healthEl.textContent=Math.floor(health);
+      health-=b.userData.damage; healthEl.textContent=Math.floor(health);
       scene.remove(b); enemyBullets.splice(i,1);
     }
   });
+
   // Chests
   chests.forEach((c,i)=>{
     if(c.position.distanceTo(player.position)<1.5){
@@ -260,10 +284,11 @@ function update(){
       scene.remove(c); chests.splice(i,1);
     }
   });
+
   // Storm
-  stormRadius-=0.05;
-  storm.scale.setScalar(stormRadius/200);
+  stormRadius-=0.05; storm.scale.setScalar(stormRadius/200);
   if(player.position.length()>stormRadius){health-=0.05; healthEl.textContent=Math.floor(health);}
+
   // Snow biome
   if(player.position.x>50 && player.position.z>50){
     snowSystem.visible=true;
@@ -274,6 +299,7 @@ function update(){
     }
     snowGeometry.attributes.position.needsUpdate=true;
   } else snowSystem.visible=false;
+
   if(health<=0){alert("You died! Score: "+score); location.reload();}
 }
 
@@ -283,6 +309,7 @@ animate();
 
 /* ---------- RESIZE ---------- */
 window.addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight);});
+
 </script>
 </body>
 </html>
