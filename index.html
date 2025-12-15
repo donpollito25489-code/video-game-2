@@ -2,235 +2,218 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Mini Fortnite Upgraded</title>
+<title>Mini Fortnite 50 Players</title>
 <style>
 body { margin:0; overflow:hidden; cursor:crosshair; }
-#ui {
-  position:fixed;
-  top:10px;
-  left:10px;
-  color:white;
-  font-family:Arial;
-  font-size:18px;
-  z-index:10;
-}
+#ui { position:fixed; top:10px; left:10px; color:white; font-family:Arial; font-size:18px; z-index:10; }
 </style>
 </head>
 <body>
-
 <div id="ui">
 Health: <span id="health">100</span> | Damage: <span id="damage">1</span> | Score: <span id="score">0</span>
 </div>
-
 <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
 <script>
-/* ---------- SCENE SETUP ---------- */
+/* ---------- SCENE ---------- */
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
-
 const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(innerWidth, innerHeight);
-renderer.shadowMap.enabled = true;
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled=true;
 document.body.appendChild(renderer.domElement);
 
-/* ---------- LIGHTING ---------- */
-scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-const sun = new THREE.DirectionalLight(0xffffff, 1);
-sun.position.set(50, 100, 50);
-sun.castShadow = true;
+/* ---------- LIGHT ---------- */
+scene.add(new THREE.AmbientLight(0xffffff,0.5));
+const sun = new THREE.DirectionalLight(0xffffff,1);
+sun.position.set(50,100,50);
+sun.castShadow=true;
 scene.add(sun);
 
 /* ---------- TERRAIN ---------- */
-const terrainGeo = new THREE.PlaneGeometry(600, 600, 100, 100);
-terrainGeo.rotateX(-Math.PI / 2);
-terrainGeo.attributes.position.array.forEach((v, i, arr) => {
-  if (i % 3 === 1) { // y-coordinate
-    arr[i] = Math.random() * 4; // small hills
-  }
-});
-terrainGeo.computeVertexNormals();
+const mapSize = 200;
 const terrain = new THREE.Mesh(
-  terrainGeo,
-  new THREE.MeshStandardMaterial({ color: 0x228B22 })
+  new THREE.PlaneGeometry(mapSize,mapSize,1,1),
+  new THREE.MeshStandardMaterial({color:0x228b22})
 );
-terrain.receiveShadow = true;
+terrain.rotation.x = -Math.PI/2;
+terrain.receiveShadow=true;
 scene.add(terrain);
 
-/* ---------- BIOMES ---------- */
-const snowBiome = new THREE.Mesh(
-  new THREE.PlaneGeometry(200, 200),
-  new THREE.MeshStandardMaterial({ color: 0xf0f8ff })
-);
-snowBiome.rotation.x = -Math.PI / 2;
-snowBiome.position.set(200, 0, 200);
-scene.add(snowBiome);
+/* ---------- SNOW PARTICLES ---------- */
+let snowParticles=[];
+const snowCount=1000;
+const snowGeometry=new THREE.BufferGeometry();
+const snowPositions=new Float32Array(snowCount*3);
+for(let i=0;i<snowCount*3;i+=3){
+  snowPositions[i]=Math.random()*mapSize-mapSize/2;
+  snowPositions[i+1]=Math.random()*50;
+  snowPositions[i+2]=Math.random()*mapSize-mapSize/2;
+}
+snowGeometry.setAttribute('position',new THREE.BufferAttribute(snowPositions,3));
+const snowMaterial=new THREE.PointsMaterial({color:0xffffff,size:0.3});
+const snowSystem=new THREE.Points(snowGeometry,snowMaterial);
+scene.add(snowSystem);
+
+/* ---------- BUILDINGS ---------- */
+const buildings=[];
+function createBuilding(x,z,w,h,d){
+  const b=new THREE.Mesh(
+    new THREE.BoxGeometry(w,h,d),
+    new THREE.MeshStandardMaterial({color:0xaaaaaa})
+  );
+  b.position.set(x,h/2,z);
+  b.castShadow=true;
+  scene.add(b);
+  buildings.push(b);
+  // Add a chest inside
+  const c=new THREE.Mesh(
+    new THREE.BoxGeometry(1,1,1),
+    new THREE.MeshStandardMaterial({color:0xffd700})
+  );
+  c.position.set(x,1.5,z);
+  scene.add(c);
+  chests.push(c);
+}
+const chests=[];
+
+// Example buildings with chests
+for(let i=-80;i<=80;i+=40){
+  for(let j=-80;j<=80;j+=40){
+    if(Math.random()>0.3) createBuilding(i,j,6,10+Math.random()*15,6);
+  }
+}
 
 /* ---------- TREES & ROCKS ---------- */
-function createTree(x, z, isSnow = false){
-  const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.3, 0.4, 3),
-    new THREE.MeshStandardMaterial({ color: 0x8b4513 })
+function createTree(x,z,isSnow=false){
+  const trunk=new THREE.Mesh(
+    new THREE.CylinderGeometry(0.3,0.4,3),
+    new THREE.MeshStandardMaterial({color:0x8b4513})
   );
-  const leaves = new THREE.Mesh(
+  const leaves=new THREE.Mesh(
     new THREE.SphereGeometry(1.5),
-    new THREE.MeshStandardMaterial({ color: isSnow ? 0xffffff : 0x228b22 })
+    new THREE.MeshStandardMaterial({color:isSnow?0xffffff:0x228b22})
   );
-  trunk.position.set(x, 1.5, z);
-  leaves.position.set(x, 3.5, z);
-  scene.add(trunk, leaves);
+  trunk.position.set(x,1.5,z);
+  leaves.position.set(x,3.5,z);
+  scene.add(trunk,leaves);
 }
-
 for(let i=0;i<50;i++){
-  createTree(Math.random()*400-200, Math.random()*400-200, false);
-  createTree(Math.random()*100+150, Math.random()*100+150, true);
+  createTree(Math.random()*mapSize-mapSize/2,Math.random()*mapSize-mapSize/2,false);
+  createTree(Math.random()*100+50,Math.random()*100+50,true);
 }
-
 function createRock(x,z){
-  const rock = new THREE.Mesh(
+  const rock=new THREE.Mesh(
     new THREE.DodecahedronGeometry(Math.random()*1+0.5),
-    new THREE.MeshStandardMaterial({ color: 0x808080 })
+    new THREE.MeshStandardMaterial({color:0x808080})
   );
-  rock.position.set(x, 0.5, z);
+  rock.position.set(x,0.5,z);
   scene.add(rock);
 }
 for(let i=0;i<20;i++){
-  createRock(Math.random()*400-200, Math.random()*400-200);
+  createRock(Math.random()*mapSize-mapSize/2,Math.random()*mapSize-mapSize/2);
 }
 
 /* ---------- PLAYER ---------- */
 function createPlayer(color=0x0000ff){
-  const group = new THREE.Group();
-  const body = new THREE.Mesh(
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(
     new THREE.CapsuleGeometry(0.5,1.2,4,8),
-    new THREE.MeshStandardMaterial({ color })
+    new THREE.MeshStandardMaterial({color})
   );
-  body.castShadow = true;
-  group.add(body);
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.4,16,16),
-    new THREE.MeshStandardMaterial({ color:0xffdbac })
+  body.castShadow=true;
+  g.add(body);
+  const head=new THREE.Mesh(
+    new THREE.SphereGeometry(0.4),
+    new THREE.MeshStandardMaterial({color:0xffdbac})
   );
-  head.position.y = 1.4;
-  group.add(head);
-  return group;
+  head.position.y=1.4;
+  g.add(head);
+  return g;
 }
-
-const player = createPlayer();
+const player=createPlayer();
 player.position.set(0,1,0);
 scene.add(player);
 
-/* ---------- CAMERA CONTROL ---------- */
-let yaw = 0, pitch = 0;
-const cameraOffset = new THREE.Vector3(0,4,6);
-document.body.addEventListener("click", ()=>document.body.requestPointerLock());
-
-document.addEventListener("mousemove", e=>{
-  if(document.pointerLockElement!==document.body) return;
+/* ---------- CAMERA ---------- */
+let yaw=0,pitch=0;
+const cameraOffset=new THREE.Vector3(0,4,6);
+document.body.addEventListener("click",()=>document.body.requestPointerLock());
+document.addEventListener("mousemove",e=>{
+  if(document.pointerLockElement!==document.body)return;
   yaw -= e.movementX*0.002;
-  pitch -= e.movementY*0.002; // Fixed: moving mouse down looks down
-  pitch = Math.max(-1.2, Math.min(1.2, pitch));
+  pitch -= e.movementY*0.002; // Correct: moving down looks down
+  pitch=Math.max(-1.2,Math.min(1.2,pitch));
 });
 
 /* ---------- INPUT ---------- */
-const keys = {};
-document.addEventListener("keydown", e=>keys[e.key.toLowerCase()]=true);
-document.addEventListener("keyup", e=>keys[e.key.toLowerCase()]=false);
+const keys={};
+document.addEventListener("keydown",e=>keys[e.key.toLowerCase()]=true);
+document.addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
 
 /* ---------- PHYSICS ---------- */
-let vy = 0, onGround = true;
-const gravity = -0.02;
-const jumpPower = 0.35;
+let vy=0,onGround=true;
+const gravity=-0.02;
+const jumpPower=0.35;
 
 /* ---------- BULLETS ---------- */
-const bullets = [];
-document.addEventListener("mousedown", ()=>{
-  const bullet = new THREE.Mesh(
+const bullets=[];
+document.addEventListener("mousedown",()=>{
+  const b=new THREE.Mesh(
     new THREE.SphereGeometry(0.12),
-    new THREE.MeshBasicMaterial({ color:0xffff00 })
+    new THREE.MeshBasicMaterial({color:0xffff00})
   );
-  bullet.position.copy(player.position).add(new THREE.Vector3(0,1,0));
-  const dir = new THREE.Vector3(Math.sin(yaw),0,-Math.cos(yaw));
-  bullet.userData.vel = dir.multiplyScalar(0.8);
-  scene.add(bullet);
-  bullets.push(bullet);
+  b.position.copy(player.position).add(new THREE.Vector3(0,1,0));
+  const dir=new THREE.Vector3(Math.sin(yaw),0,-Math.cos(yaw));
+  b.userData.vel=dir.multiplyScalar(0.8);
+  scene.add(b);
+  bullets.push(b);
 });
 
-/* ---------- CHESTS ---------- */
-const chests = [];
-function spawnChest(x,z){
-  const chest = new THREE.Mesh(
-    new THREE.BoxGeometry(1,1,1),
-    new THREE.MeshStandardMaterial({ color:0xffd700 })
-  );
-  chest.position.set(x,1,z);
-  scene.add(chest);
-  chests.push(chest);
-}
-// Example chests
-spawnChest(10,10);
-spawnChest(-15,30);
-spawnChest(50,50);
-
 /* ---------- AI ENEMIES ---------- */
-const enemies = [];
-const enemyBullets = [];
-function spawnEnemy(){
-  const e = createPlayer(0xff0000);
-  e.position.set(Math.random()*100-50,1,Math.random()*100-50);
+const enemies=[],enemyBullets=[];
+for(let i=0;i<50;i++){
+  const isGood=Math.random()>0.5;
+  const e=createPlayer(isGood?0xff0000:0xff5555);
+  e.position.set(Math.random()*mapSize-mapSize/2,1,Math.random()*mapSize-mapSize/2);
+  e.userData={good:isGood};
   scene.add(e);
   enemies.push(e);
 }
-setInterval(spawnEnemy,4000);
 
 /* ---------- STORM ---------- */
-let stormRadius = 250;
-const storm = new THREE.Mesh(
+let stormRadius=200;
+const storm=new THREE.Mesh(
   new THREE.SphereGeometry(stormRadius,32,32),
   new THREE.MeshBasicMaterial({
-    color:0x8000ff,
-    transparent:true,
-    opacity:0.15,
-    side:THREE.BackSide
+    color:0x8000ff,transparent:true,opacity:0.15,side:THREE.BackSide
   })
 );
 scene.add(storm);
 
 /* ---------- GAME STATE ---------- */
-let health = 100;
-let damage = 1;
-let score = 0;
-const healthEl = document.getElementById("health");
-const dmgEl = document.getElementById("damage");
-const scoreEl = document.getElementById("score");
+let health=100,damage=1,score=0;
+const healthEl=document.getElementById("health");
+const dmgEl=document.getElementById("damage");
+const scoreEl=document.getElementById("score");
 
 /* ---------- UPDATE LOOP ---------- */
 function update(){
   // Movement
-  const speed = 0.2;
-  const forward = new THREE.Vector3(Math.sin(yaw),0,-Math.cos(yaw));
-  const right = new THREE.Vector3(Math.cos(yaw),0,Math.sin(yaw));
-
+  const speed=0.2;
+  const forward=new THREE.Vector3(Math.sin(yaw),0,-Math.cos(yaw));
+  const right=new THREE.Vector3(Math.cos(yaw),0,Math.sin(yaw));
   if(keys.w) player.position.add(forward.clone().multiplyScalar(speed));
   if(keys.s) player.position.add(forward.clone().multiplyScalar(-speed));
   if(keys.a) player.position.add(right.clone().multiplyScalar(-speed));
   if(keys.d) player.position.add(right.clone().multiplyScalar(speed));
-
-  // Jump & Gravity
-  if(keys[" "] && onGround){ vy = jumpPower; onGround=false; }
-  vy += gravity;
-  player.position.y += vy;
-  if(player.position.y < 1){
-    player.position.y = 1;
-    vy = 0;
-    onGround = true;
-  }
-
-  // Camera follow
-  camera.position.copy(player.position)
-    .add(new THREE.Vector3(Math.sin(yaw)*cameraOffset.z, cameraOffset.y + pitch*3, -Math.cos(yaw)*cameraOffset.z));
-  camera.lookAt(player.position.x, player.position.y+1.5, player.position.z);
-
+  // Jump & gravity
+  if(keys[" "] && onGround){vy=jumpPower; onGround=false;}
+  vy+=gravity; player.position.y+=vy;
+  if(player.position.y<1){player.position.y=1;vy=0;onGround=true;}
+  // Camera
+  camera.position.copy(player.position).add(new THREE.Vector3(Math.sin(yaw)*cameraOffset.z,cameraOffset.y+pitch*3,-Math.cos(yaw)*cameraOffset.z));
+  camera.lookAt(player.position.x,player.position.y+1.5,player.position.z);
   // Player bullets
   bullets.forEach((b,i)=>{
     b.position.add(b.userData.vel);
@@ -241,84 +224,65 @@ function update(){
         scene.remove(b);
         bullets.splice(i,1);
         score++;
-        scoreEl.textContent = score;
+        scoreEl.textContent=score;
       }
     });
   });
-
   // Enemy AI
   enemies.forEach(e=>{
-    const dir = player.position.clone().sub(e.position).normalize();
-    e.position.add(dir.multiplyScalar(0.03));
-
+    const dir=player.position.clone().sub(e.position).normalize();
+    if(e.userData.good) e.position.add(dir.multiplyScalar(0.04));
+    else e.position.add(new THREE.Vector3(Math.random()*0.02-0.01,0,Math.random()*0.02-0.01));
+    // Enemy shooting
     if(Math.random()<0.01){
-      const eb = new THREE.Mesh(
+      const eb=new THREE.Mesh(
         new THREE.SphereGeometry(0.12),
         new THREE.MeshBasicMaterial({color:0xff0000})
       );
       eb.position.copy(e.position).add(new THREE.Vector3(0,1,0));
-      eb.userData.vel = dir.clone().multiplyScalar(0.4);
+      eb.userData.vel=dir.clone().multiplyScalar(0.5);
       scene.add(eb);
       enemyBullets.push(eb);
     }
-
-    // AI touching player
-    if(e.position.distanceTo(player.position)<1.5){
-      health -= 0.1;
-      healthEl.textContent = Math.floor(health);
-    }
   });
-
   // Enemy bullets
   enemyBullets.forEach((b,i)=>{
     b.position.add(b.userData.vel);
     if(b.position.distanceTo(player.position)<1){
-      health -= 1;
-      healthEl.textContent = Math.floor(health);
-      scene.remove(b);
-      enemyBullets.splice(i,1);
+      health-=1; healthEl.textContent=Math.floor(health);
+      scene.remove(b); enemyBullets.splice(i,1);
     }
   });
-
-  // Chests pickup
+  // Chests
   chests.forEach((c,i)=>{
     if(c.position.distanceTo(player.position)<1.5){
-      damage++;
-      dmgEl.textContent = damage;
-      scene.remove(c);
-      chests.splice(i,1);
+      damage++; dmgEl.textContent=damage;
+      scene.remove(c); chests.splice(i,1);
     }
   });
-
   // Storm
-  stormRadius -= 0.02;
-  storm.scale.setScalar(stormRadius/250);
-  if(player.position.length() > stormRadius){
-    health -= 0.05;
-    healthEl.textContent = Math.floor(health);
-  }
-
-  // Check death
-  if(health<=0){
-    alert("You died! Score: "+score);
-    location.reload();
-  }
+  stormRadius-=0.05;
+  storm.scale.setScalar(stormRadius/200);
+  if(player.position.length()>stormRadius){health-=0.05; healthEl.textContent=Math.floor(health);}
+  // Snow biome
+  if(player.position.x>50 && player.position.z>50){
+    snowSystem.visible=true;
+    const positions=snowGeometry.attributes.position.array;
+    for(let i=0;i<positions.length;i+=3){
+      positions[i+1]-=0.3;
+      if(positions[i+1]<0) positions[i+1]=50;
+    }
+    snowGeometry.attributes.position.needsUpdate=true;
+  } else snowSystem.visible=false;
+  if(health<=0){alert("You died! Score: "+score); location.reload();}
 }
 
 /* ---------- ANIMATE ---------- */
-function animate(){
-  requestAnimationFrame(animate);
-  update();
-  renderer.render(scene,camera);
-}
+function animate(){requestAnimationFrame(animate); update(); renderer.render(scene,camera);}
 animate();
 
 /* ---------- RESIZE ---------- */
-window.addEventListener("resize", ()=>{
-  camera.aspect = innerWidth/innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth,innerHeight);
-});
+window.addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight);});
 </script>
 </body>
 </html>
