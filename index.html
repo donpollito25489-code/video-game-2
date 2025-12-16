@@ -2,18 +2,34 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Mini Fortnite – Grid Build Edition</title>
+<title>Playable Mini Fortnite</title>
 <style>
 body { margin:0; overflow:hidden; background:black; }
 #ui {
-  position:fixed; top:10px; left:10px;
-  font-family:Arial; color:white; z-index:10;
-  background:rgba(0,0,0,0.5); padding:10px;
+  position:fixed;
+  bottom:20px;
+  left:20px;
+  color:white;
+  font-family:Arial;
+  z-index:10;
+}
+.bar {
+  width:200px;
+  height:18px;
+  background:#333;
+  margin-bottom:6px;
+}
+.fill {
+  height:100%;
 }
 #miniMap {
-  position:fixed; top:10px; right:10px;
-  width:150px; height:150px;
-  background:#111; border:2px solid white;
+  position:fixed;
+  top:10px;
+  right:10px;
+  width:160px;
+  height:160px;
+  background:#111;
+  border:2px solid white;
   z-index:10;
 }
 </style>
@@ -21,17 +37,17 @@ body { margin:0; overflow:hidden; background:black; }
 <body>
 
 <div id="ui">
-❤️ <span id="health">100</span><br>
-🛡️ <span id="shield">50</span><br>
-🪵 <span id="wood">100</span><br>
-🔫 <span id="weapon">AR</span>
+  <div class="bar"><div id="healthBar" class="fill" style="background:red;width:100%"></div></div>
+  <div class="bar"><div id="shieldBar" class="fill" style="background:blue;width:50%"></div></div>
+  🪵 Wood: <span id="wood">100</span><br>
+  🔫 Weapon: <span id="weapon">AR</span>
 </div>
 <canvas id="miniMap"></canvas>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
 <script>
 
-/* ---------------- SCENE ---------------- */
+/* ================= SCENE ================= */
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
 
@@ -40,151 +56,191 @@ const renderer = new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(innerWidth, innerHeight);
 document.body.appendChild(renderer.domElement);
 
-/* ---------------- LIGHT ---------------- */
+/* ================= LIGHT ================= */
 scene.add(new THREE.AmbientLight(0xffffff,0.6));
 const sun = new THREE.DirectionalLight(0xffffff,0.8);
-sun.position.set(50,100,50);
+sun.position.set(100,200,100);
 scene.add(sun);
 
-/* ---------------- TERRAIN ---------------- */
-const MAP_SIZE = 200;
-const terrain = new THREE.Mesh(
-  new THREE.PlaneGeometry(MAP_SIZE,MAP_SIZE),
+/* ================= TERRAIN ================= */
+const MAP_SIZE = 300;
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE),
   new THREE.MeshStandardMaterial({color:0x2e8b57})
 );
-terrain.rotation.x = -Math.PI/2;
-scene.add(terrain);
+ground.rotation.x = -Math.PI/2;
+scene.add(ground);
 
-/* ---------------- GRID ---------------- */
+/* ================= GRID ================= */
 const GRID = 4;
-const snap = v => Math.round(v/GRID)*GRID;
+const snap = v => Math.round(v / GRID) * GRID;
 
-/* ---------------- PLAYER ---------------- */
+/* ================= PLAYER ================= */
 const player = new THREE.Group();
-const body = new THREE.Mesh(
+player.add(new THREE.Mesh(
   new THREE.CapsuleGeometry(0.5,1.2),
-  new THREE.MeshStandardMaterial({color:0x0000ff})
-);
-player.add(body);
+  new THREE.MeshStandardMaterial({color:0x0066ff})
+));
 player.position.set(0,1,0);
 scene.add(player);
 
-let health=100, shield=50, wood=100;
-let yaw=0, pitch=0;
-let vy=0, onGround=true;
+let health = 100;
+let shield = 50;
+let wood = 100;
 
-/* ---------------- CAMERA ---------------- */
+/* ================= CAMERA CONTROL ================= */
+let yaw = 0, pitch = 0;
 document.body.addEventListener("click",()=>document.body.requestPointerLock());
 document.addEventListener("mousemove",e=>{
-  if(document.pointerLockElement!==document.body)return;
-  yaw -= e.movementX*0.002;
-  pitch -= e.movementY*0.002;
-  yaw = Math.max(-Math.PI/2, Math.min(Math.PI/2, yaw)); // 180°
-  pitch = Math.max(-1.1, Math.min(1.1, pitch));
+  if(document.pointerLockElement!==document.body) return;
+  yaw -= e.movementX * 0.002;
+  pitch -= e.movementY * 0.002;
+  pitch = Math.max(-0.6, Math.min(0.6, pitch));
 });
 
-/* ---------------- INPUT ---------------- */
-const keys={};
-addEventListener("keydown",e=>keys[e.key.toLowerCase()]=true);
-addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
+/* ================= INPUT ================= */
+const keys = {};
+addEventListener("keydown",e=>keys[e.key.toLowerCase()] = true);
+addEventListener("keyup",e=>keys[e.key.toLowerCase()] = false);
 
-/* ---------------- BUILDING ---------------- */
-let buildMode="wall";
-const raycaster=new THREE.Raycaster();
+/* ================= BULLETS ================= */
+const bullets = [];
+const enemyBullets = [];
+
+function shoot(from, dir, speed, damage, list) {
+  const b = new THREE.Mesh(
+    new THREE.SphereGeometry(0.12),
+    new THREE.MeshBasicMaterial({color:0xffff00})
+  );
+  b.position.copy(from);
+  b.userData = {dir, speed, damage};
+  scene.add(b);
+  list.push(b);
+}
+
+addEventListener("mousedown",e=>{
+  if(e.button !== 0) return;
+  const dir = new THREE.Vector3(Math.sin(yaw),0,-Math.cos(yaw));
+  shoot(player.position.clone().add(new THREE.Vector3(0,1,0)), dir, 0.9, 10, bullets);
+});
+
+/* ================= AI ================= */
+const enemies = [];
+
+function makeEnemy(x,z){
+  const e = new THREE.Group();
+  e.add(new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.5,1.2),
+    new THREE.MeshStandardMaterial({color:0xff3333})
+  ));
+  e.position.set(x,1,z);
+  e.userData = {health:60, shootCooldown:0};
+  scene.add(e);
+  enemies.push(e);
+}
+
+for(let i=0;i<10;i++){
+  makeEnemy(Math.random()*MAP_SIZE-MAP_SIZE/2, Math.random()*MAP_SIZE-MAP_SIZE/2);
+}
+
+/* ================= BUILDINGS ================= */
+function building(x,z){
+  const mat = new THREE.MeshStandardMaterial({color:0xaaaaaa});
+  const floor1 = new THREE.Mesh(new THREE.BoxGeometry(10,4,10),mat);
+  floor1.position.set(x,2,z);
+  const floor2 = floor1.clone(); floor2.position.y = 6;
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(10,0.5,10),mat);
+  roof.position.set(x,8.5,z);
+  scene.add(floor1,floor2,roof);
+}
+building(30,30);
+building(-40,-20);
+
+/* ================= BUILDING SYSTEM ================= */
 let preview;
+const raycaster = new THREE.Raycaster();
 
 function makePreview(){
   if(preview) scene.remove(preview);
-  const geo = buildMode==="wall"
-    ? new THREE.BoxGeometry(4,4,0.3)
-    : new THREE.BoxGeometry(4,0.3,4);
-  preview=new THREE.Mesh(
-    geo,
-    new THREE.MeshStandardMaterial({color:0x00ff00,opacity:0.4,transparent:true})
+  preview = new THREE.Mesh(
+    new THREE.BoxGeometry(4,4,0.3),
+    new THREE.MeshStandardMaterial({color:0x00ff00,transparent:true,opacity:0.4})
   );
   scene.add(preview);
 }
 makePreview();
 
-addEventListener("keydown",e=>{
-  if(e.key==="q"){buildMode="wall";makePreview();}
-  if(e.key==="e"){buildMode="floor";makePreview();}
+addEventListener("contextmenu",e=>{
+  e.preventDefault();
+  if(wood < 10) return;
+  const piece = preview.clone();
+  piece.material = new THREE.MeshStandardMaterial({color:0x8b5a2b});
+  scene.add(piece);
+  wood -= 10;
 });
 
-/* ---------------- BULLETS ---------------- */
-const bullets=[];
-
-/* ---------------- AI ---------------- */
-const enemies=[];
-function makeAI(x,z){
-  const g=new THREE.Group();
-  g.add(new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.5,1.2),
-    new THREE.MeshStandardMaterial({color:0xff0000})
-  ));
-  g.position.set(x,1,z);
-  g.userData={health:50};
-  scene.add(g);
-  enemies.push(g);
-}
-for(let i=0;i<12;i++){
-  makeAI(Math.random()*MAP_SIZE-MAP_SIZE/2,Math.random()*MAP_SIZE-MAP_SIZE/2);
-}
-
-/* ---------------- TILTED BUILDINGS ---------------- */
-function tiltedTower(x,z){
-  const mat=new THREE.MeshStandardMaterial({color:0xaaaaaa});
-  for(let y=2;y<=6;y+=4){
-    const floor=new THREE.Mesh(new THREE.BoxGeometry(8,4,8),mat);
-    floor.position.set(x,y,z);
-    scene.add(floor);
-  }
-  const roof=new THREE.Mesh(new THREE.BoxGeometry(8,0.5,8),mat);
-  roof.position.set(x,8.5,z);
-  scene.add(roof);
-}
-tiltedTower(20,20);
-tiltedTower(-30,-10);
-
-/* ---------------- UPDATE ---------------- */
+/* ================= UPDATE ================= */
 function update(){
-  const speed=0.2;
-  const fwd=new THREE.Vector3(Math.sin(yaw),0,-Math.cos(yaw));
-  const right=new THREE.Vector3(Math.cos(yaw),0,Math.sin(yaw));
+  const speed = 0.25;
+  const forward = new THREE.Vector3(Math.sin(yaw),0,-Math.cos(yaw));
+  const right = new THREE.Vector3(Math.cos(yaw),0,Math.sin(yaw));
 
-  if(keys.w) player.position.add(fwd.clone().multiplyScalar(speed));
-  if(keys.s) player.position.add(fwd.clone().multiplyScalar(-speed));
+  if(keys.w) player.position.add(forward.clone().multiplyScalar(speed));
+  if(keys.s) player.position.add(forward.clone().multiplyScalar(-speed));
   if(keys.a) player.position.add(right.clone().multiplyScalar(-speed));
   if(keys.d) player.position.add(right.clone().multiplyScalar(speed));
 
-  if(keys[" "]&&onGround){vy=0.35;onGround=false;}
-  vy-=0.02; player.position.y+=vy;
-  if(player.position.y<1){player.position.y=1;vy=0;onGround=true;}
-
   camera.position.copy(player.position)
-    .add(new THREE.Vector3(Math.sin(yaw)*6,4,-Math.cos(yaw)*6));
-  camera.lookAt(player.position.x,player.position.y+1.5,player.position.z);
+    .add(new THREE.Vector3(-Math.sin(yaw)*8,5,-Math.cos(yaw)*8));
+  camera.lookAt(player.position.x, player.position.y+1.5, player.position.z);
 
-  raycaster.setFromCamera(new THREE.Vector2(0,0),camera);
-  const hit=raycaster.intersectObject(terrain)[0];
+  raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
+  const hit = raycaster.intersectObject(ground)[0];
   if(hit){
-    preview.position.set(
-      snap(hit.point.x),
-      buildMode==="wall"?2:0.15,
-      snap(hit.point.z)
-    );
+    preview.position.set(snap(hit.point.x),2,snap(hit.point.z));
+    preview.rotation.y = Math.round(yaw/(Math.PI/2))*(Math.PI/2);
   }
 
-  enemies.forEach(e=>{
-    const targets=[player,...enemies.filter(o=>o!==e)];
-    let t=targets[Math.floor(Math.random()*targets.length)];
-    const d=t.position.clone().sub(e.position).normalize();
-    e.position.add(d.multiplyScalar(0.03));
+  bullets.forEach((b,i)=>{
+    b.position.add(b.userData.dir.clone().multiplyScalar(b.userData.speed));
+    enemies.forEach((e,j)=>{
+      if(b.position.distanceTo(e.position)<1){
+        e.userData.health -= b.userData.damage;
+        scene.remove(b); bullets.splice(i,1);
+        if(e.userData.health<=0){ scene.remove(e); enemies.splice(j,1); }
+      }
+    });
   });
 
-  document.getElementById("health").textContent=health;
-  document.getElementById("shield").textContent=shield;
-  document.getElementById("wood").textContent=wood;
+  enemies.forEach(e=>{
+    let target = player;
+    enemies.forEach(o=>{
+      if(o!==e && o.position.distanceTo(e.position)<target.position.distanceTo(e.position)){
+        target = o;
+      }
+    });
+    const dir = target.position.clone().sub(e.position).normalize();
+    e.position.add(dir.multiplyScalar(0.04));
+    e.userData.shootCooldown--;
+    if(e.userData.shootCooldown<=0){
+      shoot(e.position.clone().add(new THREE.Vector3(0,1,0)), dir, 0.7, 8, enemyBullets);
+      e.userData.shootCooldown = 60;
+    }
+  });
+
+  enemyBullets.forEach((b,i)=>{
+    b.position.add(b.userData.dir.clone().multiplyScalar(b.userData.speed));
+    if(b.position.distanceTo(player.position)<1){
+      if(shield>0) shield-=8; else health-=8;
+      scene.remove(b); enemyBullets.splice(i,1);
+    }
+  });
+
+  document.getElementById("healthBar").style.width = Math.max(health,0)+"%";
+  document.getElementById("shieldBar").style.width = Math.max(shield,0)+"%";
+  document.getElementById("wood").textContent = wood;
+
+  if(health<=0){ alert("You died"); location.reload(); }
 }
 
 function animate(){
@@ -195,11 +251,10 @@ function animate(){
 animate();
 
 addEventListener("resize",()=>{
-  camera.aspect=innerWidth/innerHeight;
+  camera.aspect = innerWidth/innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth,innerHeight);
 });
-
 </script>
 </body>
 </html>
