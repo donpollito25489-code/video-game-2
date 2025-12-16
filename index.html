@@ -82,7 +82,7 @@ function addTree(x,z){
   leaves.position.set(x,3,z);
   scene.add(trunk,leaves);
 }
-for(let i=0;i<35;i++){
+for(let i=0;i<40;i++){
   addTree(Math.random()*MAP_SIZE-MAP_SIZE/2, Math.random()*MAP_SIZE-MAP_SIZE/2);
 }
 function addRock(x,z){
@@ -93,7 +93,7 @@ function addRock(x,z){
   rock.position.set(x,0.5,z);
   scene.add(rock);
 }
-for(let i=0;i<25;i++){
+for(let i=0;i<30;i++){
   addRock(Math.random()*MAP_SIZE-MAP_SIZE/2, Math.random()*MAP_SIZE-MAP_SIZE/2);
 }
 
@@ -102,7 +102,6 @@ const GRID = 4;
 const snap = v => Math.round(v/GRID)*GRID;
 let buildMode=false;
 let preview=null;
-
 function makePreview(){
   if(preview) scene.remove(preview);
   preview = new THREE.Mesh(
@@ -179,12 +178,22 @@ for(let i=0;i<12;i++){
 }
 
 /* ================== TILTED BUILDINGS ================== */
+const chests=[];
 function building(x,z){
   const mat = new THREE.MeshStandardMaterial({color:0xaaaaaa});
   const floor1 = new THREE.Mesh(new THREE.BoxGeometry(10,4,10),mat); floor1.position.set(x,2,z);
   const floor2 = floor1.clone(); floor2.position.y=6;
   const roof = new THREE.Mesh(new THREE.BoxGeometry(10,0.5,10),mat); roof.position.set(x,8.5,z);
   scene.add(floor1,floor2,roof);
+  // Add loot chest inside floor1
+  const chest = new THREE.Mesh(
+    new THREE.BoxGeometry(1,1,1),
+    new THREE.MeshStandardMaterial({color:0xffff00})
+  );
+  chest.position.set(x,2.5,z);
+  chest.userData={loot:true};
+  chests.push(chest);
+  scene.add(chest);
 }
 building(30,30);
 building(-40,-20);
@@ -201,12 +210,8 @@ function stormDamage(entity){
   const dx = entity.position.x;
   const dz = entity.position.z;
   if(Math.sqrt(dx*dx+dz*dz) > stormRadius){
-    if(entity===player){
-      health-=0.05;
-    } else {
-      entity.userData.health -=0.05;
-      if(entity.userData.health<=0){scene.remove(entity); enemies.splice(enemies.indexOf(entity),1);}
-    }
+    if(entity===player){ health-=0.05; }
+    else { entity.userData.health -=0.05; if(entity.userData.health<=0){scene.remove(entity); enemies.splice(enemies.indexOf(entity),1);} }
   }
   document.getElementById("stormIndicator").textContent = "Storm Radius: "+Math.floor(stormRadius);
 }
@@ -244,9 +249,27 @@ function update(){
       if(b.position.distanceTo(e.position)<1){
         e.userData.health -= b.userData.damage;
         scene.remove(b); bullets.splice(i,1);
-        if(e.userData.health<=0){ scene.remove(e); enemies.splice(j,1); }
+        if(e.userData.health<=0){ 
+          // drop loot
+          const loot = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.5),
+            new THREE.MeshStandardMaterial({color:0x00ff00}));
+          loot.position.copy(e.position);
+          loot.userData={wood:10,ammo:5,health:5};
+          chests.push(loot);
+          scene.add(loot);
+          scene.remove(e); enemies.splice(j,1); 
+        }
       }
     });
+  });
+
+  /* Player pickup loot */
+  chests.forEach((c,i)=>{
+    if(c.position.distanceTo(player.position)<2 && c.userData.loot!==true){
+      if(c.userData.wood) wood+=c.userData.wood;
+      if(c.userData.health) health=Math.min(100,health+c.userData.health);
+      scene.remove(c); chests.splice(i,1);
+    }
   });
 
   /* AI movement and shooting */
