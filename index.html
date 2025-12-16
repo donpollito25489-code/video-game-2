@@ -2,326 +2,119 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Mini Fortnite Browser Game</title>
+<title>Galaga Rocket Game</title>
 <style>
-body { margin:0; overflow:hidden; background:#87ceeb; }
-#loading { 
-  position:fixed; top:0; left:0; width:100%; height:100%; 
-  background:black; color:white; display:flex; align-items:center; justify-content:center; font-family:Arial; font-size:24px; z-index:9999;
-}
-#ui {
-  position:fixed; bottom:20px; left:20px;
-  font-family:Arial; color:white; z-index:10;
-}
-.bar { width:200px; height:18px; background:#333; margin-bottom:6px; }
-.fill { height:100%; }
-#miniMap {
-  position:fixed; top:10px; right:10px;
-  width:160px; height:160px;
-  background:#111; border:2px solid white;
-  z-index:10;
-}
-#stormIndicator {
-  position:fixed; top:180px; right:10px; color:white; font-family:Arial; font-size:14px; z-index:10;
-}
+  body { margin: 0; background: black; overflow: hidden; }
+  canvas { display: block; margin: auto; background: black; }
 </style>
 </head>
 <body>
-
-<div id="loading">Loading Game...</div>
-
-<div id="ui">
-  <div class="bar"><div id="healthBar" class="fill" style="background:red;width:100%"></div></div>
-  <div class="bar"><div id="shieldBar" class="fill" style="background:blue;width:50%"></div></div>
-  🪵 Wood: <span id="wood">100</span><br>
-  🔫 Weapon: <span id="weapon">AR</span><br>
-  🏗️ Mode: <span id="mode">Gun</span>
-</div>
-<div id="stormIndicator">Storm shrinking...</div>
-<canvas id="miniMap"></canvas>
-
-<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<canvas id="gameCanvas" width="600" height="800"></canvas>
 <script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
 
-/* ================== LOADING SCREEN ================== */
-setTimeout(()=>{document.getElementById("loading").style.display="none";},2000);
+let keys = {};
+document.addEventListener("keydown", (e) => keys[e.key] = true);
+document.addEventListener("keyup", (e) => keys[e.key] = false);
 
-/* ================== SCENE SETUP ================== */
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb);
-const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer({antialias:true});
-renderer.setSize(innerWidth, innerHeight);
-document.body.appendChild(renderer.domElement);
+// Player rocket
+const player = {
+  x: canvas.width/2 - 20,
+  y: canvas.height - 60,
+  width: 40,
+  height: 40,
+  speed: 5,
+  color: "cyan"
+};
 
-scene.add(new THREE.AmbientLight(0xffffff,0.6));
-const sun = new THREE.DirectionalLight(0xffffff,0.8);
-sun.position.set(100,200,100);
-scene.add(sun);
-
-/* ================== TERRAIN ================== */
-const MAP_SIZE = 400;
-const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(MAP_SIZE,MAP_SIZE,50,50),
-  new THREE.MeshStandardMaterial({color:0x228B22})
-);
-ground.rotation.x = -Math.PI/2;
-scene.add(ground);
-
-/* ================== TREES & ROCKS ================== */
-function addTree(x,z){
-  const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.3,0.3,2),
-    new THREE.MeshStandardMaterial({color:0x8B4513})
-  );
-  trunk.position.set(x,1,z);
-  const leaves = new THREE.Mesh(
-    new THREE.ConeGeometry(1,2,8),
-    new THREE.MeshStandardMaterial({color:0x006400})
-  );
-  leaves.position.set(x,3,z);
-  scene.add(trunk,leaves);
-}
-for(let i=0;i<40;i++){
-  addTree(Math.random()*MAP_SIZE-MAP_SIZE/2, Math.random()*MAP_SIZE-MAP_SIZE/2);
-}
-function addRock(x,z){
-  const rock = new THREE.Mesh(
-    new THREE.DodecahedronGeometry(1),
-    new THREE.MeshStandardMaterial({color:0x555555})
-  );
-  rock.position.set(x,0.5,z);
-  scene.add(rock);
-}
-for(let i=0;i<30;i++){
-  addRock(Math.random()*MAP_SIZE-MAP_SIZE/2, Math.random()*MAP_SIZE-MAP_SIZE/2);
+// Bullets
+let bullets = [];
+function shoot() {
+  bullets.push({x: player.x + player.width/2 - 2, y: player.y, width: 4, height: 10, color: "yellow"});
 }
 
-/* ================== GRID & BUILDING ================== */
-const GRID = 4;
-const snap = v => Math.round(v/GRID)*GRID;
-let buildMode=false;
-let preview=null;
-function makePreview(){
-  if(preview) scene.remove(preview);
-  preview = new THREE.Mesh(
-    new THREE.BoxGeometry(4,4,0.3),
-    new THREE.MeshStandardMaterial({color:0x00ff00,transparent:true,opacity:0.4})
-  );
-  scene.add(preview);
-}
-
-/* ================== PLAYER ================== */
-const player = new THREE.Group();
-player.add(new THREE.Mesh(
-  new THREE.CapsuleGeometry(0.5,1.5),
-  new THREE.MeshStandardMaterial({color:0x0000ff})
-));
-player.position.set(0,1,0);
-scene.add(player);
-
-let health=100, shield=50, wood=100;
-let yaw=0, pitch=0, vy=0, onGround=true;
-
-/* ================== CAMERA ================== */
-document.body.addEventListener("click",()=>document.body.requestPointerLock());
-document.addEventListener("mousemove",e=>{
-  if(document.pointerLockElement!==document.body) return;
-  yaw -= e.movementX*0.002;
-  pitch -= e.movementY*0.002;
-  pitch = Math.max(-0.6, Math.min(0.6, pitch));
-});
-
-/* ================== INPUT ================== */
-const keys={};
-addEventListener("keydown",e=>{
-  keys[e.key.toLowerCase()]=true;
-  if(e.key.toLowerCase()==="b"){buildMode=!buildMode; makePreview(); document.getElementById("mode").textContent = buildMode?"Build":"Gun";}
-});
-addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
-
-/* ================== BULLETS ================== */
-const bullets=[];
-const enemyBullets=[];
-function shoot(from, dir, speed, damage, list){
-  const b = new THREE.Mesh(
-    new THREE.SphereGeometry(0.12),
-    new THREE.MeshBasicMaterial({color:0xffff00})
-  );
-  b.position.copy(from);
-  b.userData={dir,speed,damage};
-  scene.add(b);
-  list.push(b);
-}
-addEventListener("mousedown",e=>{
-  if(!buildMode && e.button===0){
-    const dir = new THREE.Vector3(Math.sin(yaw),0,-Math.cos(yaw));
-    shoot(player.position.clone().add(new THREE.Vector3(0,1,0)), dir, 1.0, 10, bullets);
+// Enemies
+let enemies = [];
+const enemyRows = 3;
+const enemyCols = 6;
+for(let r = 0; r < enemyRows; r++) {
+  for(let c = 0; c < enemyCols; c++) {
+    enemies.push({
+      x: 60 + c*80,
+      y: 60 + r*60,
+      width: 40,
+      height: 40,
+      color: "red",
+      dx: 1
+    });
   }
-});
-
-/* ================== AI ================== */
-const enemies=[];
-function makeEnemy(x,z){
-  const e = new THREE.Group();
-  e.add(new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.5,1.5),
-    new THREE.MeshStandardMaterial({color:0xff3333})
-  ));
-  e.position.set(x,1,z);
-  e.userData={health:60,shootCooldown:0};
-  scene.add(e);
-  enemies.push(e);
-}
-for(let i=0;i<12;i++){
-  makeEnemy(Math.random()*MAP_SIZE-MAP_SIZE/2, Math.random()*MAP_SIZE-MAP_SIZE/2);
 }
 
-/* ================== TILTED BUILDINGS ================== */
-const chests=[];
-function building(x,z){
-  const mat = new THREE.MeshStandardMaterial({color:0xaaaaaa});
-  const floor1 = new THREE.Mesh(new THREE.BoxGeometry(10,4,10),mat); floor1.position.set(x,2,z);
-  const floor2 = floor1.clone(); floor2.position.y=6;
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(10,0.5,10),mat); roof.position.set(x,8.5,z);
-  scene.add(floor1,floor2,roof);
-  // Add loot chest inside floor1
-  const chest = new THREE.Mesh(
-    new THREE.BoxGeometry(1,1,1),
-    new THREE.MeshStandardMaterial({color:0xffff00})
-  );
-  chest.position.set(x,2.5,z);
-  chest.userData={loot:true};
-  chests.push(chest);
-  scene.add(chest);
-}
-building(30,30);
-building(-40,-20);
-building(50,-50);
+// Game loop
+function update() {
+  // Move player
+  if(keys["ArrowLeft"] && player.x > 0) player.x -= player.speed;
+  if(keys["ArrowRight"] && player.x + player.width < canvas.width) player.x += player.speed;
+  if(keys[" "] && bullets.length < 5) shoot();
 
-/* ================== STORM ================== */
-let stormRadius = 200;
-let stormShrinkSpeed = 0.02;
-function updateStorm(){
-  stormRadius -= stormShrinkSpeed;
-  if(stormRadius<0) stormRadius=0;
-}
-function stormDamage(entity){
-  const dx = entity.position.x;
-  const dz = entity.position.z;
-  if(Math.sqrt(dx*dx+dz*dz) > stormRadius){
-    if(entity===player){ health-=0.05; }
-    else { entity.userData.health -=0.05; if(entity.userData.health<=0){scene.remove(entity); enemies.splice(enemies.indexOf(entity),1);} }
-  }
-  document.getElementById("stormIndicator").textContent = "Storm Radius: "+Math.floor(stormRadius);
-}
+  // Move bullets
+  bullets.forEach((b, i) => {
+    b.y -= 7;
+    if(b.y + b.height < 0) bullets.splice(i, 1);
+  });
 
-/* ================== UPDATE LOOP ================== */
-function update(){
-  const speed = 0.25;
-  const forward = new THREE.Vector3(Math.sin(yaw),0,-Math.cos(yaw));
-  const right = new THREE.Vector3(Math.cos(yaw),0,Math.sin(yaw));
-  if(keys.w) player.position.add(forward.clone().multiplyScalar(speed));
-  if(keys.s) player.position.add(forward.clone().multiplyScalar(-speed));
-  if(keys.a) player.position.add(right.clone().multiplyScalar(-speed));
-  if(keys.d) player.position.add(right.clone().multiplyScalar(speed));
-  if(keys[" "] && onGround){vy=0.35; onGround=false;}
-  vy-=0.02; player.position.y+=vy;
-  if(player.position.y<1){player.position.y=1; vy=0; onGround=true;}
-  camera.position.copy(player.position).add(new THREE.Vector3(-Math.sin(yaw)*8,5,-Math.cos(yaw)*8));
-  camera.lookAt(player.position.x,player.position.y+1.5,player.position.z);
-
-  /* Build preview */
-  if(buildMode){
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(new THREE.Vector2(0,0),camera);
-    const hit = raycaster.intersectObject(ground)[0];
-    if(hit){
-      preview.position.set(snap(hit.point.x),2,snap(hit.point.z));
-      preview.rotation.y = Math.round(yaw/(Math.PI/2))*(Math.PI/2);
-    }
+  // Move enemies
+  let shouldReverse = false;
+  enemies.forEach(e => {
+    e.x += e.dx;
+    if(e.x + e.width > canvas.width || e.x < 0) shouldReverse = true;
+  });
+  if(shouldReverse) {
+    enemies.forEach(e => {
+      e.dx *= -1;
+      e.y += 20;
+    });
   }
 
-  /* Player bullets hit AI */
-  bullets.forEach((b,i)=>{
-    b.position.add(b.userData.dir.clone().multiplyScalar(b.userData.speed));
-    enemies.forEach((e,j)=>{
-      if(b.position.distanceTo(e.position)<1){
-        e.userData.health -= b.userData.damage;
-        scene.remove(b); bullets.splice(i,1);
-        if(e.userData.health<=0){ 
-          // drop loot
-          const loot = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.5),
-            new THREE.MeshStandardMaterial({color:0x00ff00}));
-          loot.position.copy(e.position);
-          loot.userData={wood:10,ammo:5,health:5};
-          chests.push(loot);
-          scene.add(loot);
-          scene.remove(e); enemies.splice(j,1); 
-        }
+  // Collision detection
+  bullets.forEach((b, bi) => {
+    enemies.forEach((e, ei) => {
+      if(b.x < e.x + e.width && b.x + b.width > e.x &&
+         b.y < e.y + e.height && b.y + b.height > e.y) {
+        bullets.splice(bi,1);
+        enemies.splice(ei,1);
       }
     });
   });
-
-  /* Player pickup loot */
-  chests.forEach((c,i)=>{
-    if(c.position.distanceTo(player.position)<2 && c.userData.loot!==true){
-      if(c.userData.wood) wood+=c.userData.wood;
-      if(c.userData.health) health=Math.min(100,health+c.userData.health);
-      scene.remove(c); chests.splice(i,1);
-    }
-  });
-
-  /* AI movement and shooting */
-  enemies.forEach(e=>{
-    let targets=[player,...enemies.filter(o=>o!==e)];
-    let target=targets.reduce((a,c)=> a.position.distanceTo(e.position)<c.position.distanceTo(e.position)?a:c);
-    const dir = target.position.clone().sub(e.position).normalize();
-    e.position.add(dir.multiplyScalar(0.03));
-    e.userData.shootCooldown--;
-    if(e.userData.shootCooldown<=0){
-      shoot(e.position.clone().add(new THREE.Vector3(0,1,0)), dir, 0.7, 8, enemyBullets);
-      e.userData.shootCooldown=60;
-    }
-  });
-
-  /* Enemy bullets hit player */
-  enemyBullets.forEach((b,i)=>{
-    b.position.add(b.userData.dir.clone().multiplyScalar(b.userData.speed));
-    if(b.position.distanceTo(player.position)<1){
-      if(shield>0) shield-=b.userData.damage; else health-=b.userData.damage;
-      scene.remove(b); enemyBullets.splice(i,1);
-    }
-  });
-
-  /* Storm */
-  updateStorm();
-  stormDamage(player);
-  enemies.forEach(e=>stormDamage(e));
-
-  /* Update UI */
-  document.getElementById("healthBar").style.width=Math.max(health,0)+"%";
-  document.getElementById("shieldBar").style.width=Math.max(shield,0)+"%";
-  document.getElementById("wood").textContent=wood;
-
-  if(health<=0){alert("You died"); location.reload();}
 }
 
-/* ================== ANIMATE ================== */
-function animate(){
-  requestAnimationFrame(animate);
+// Drawing
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  // Draw player
+  ctx.fillStyle = player.color;
+  ctx.fillRect(player.x, player.y, player.width, player.height);
+  // Draw bullets
+  bullets.forEach(b => {
+    ctx.fillStyle = b.color;
+    ctx.fillRect(b.x, b.y, b.width, b.height);
+  });
+  // Draw enemies
+  enemies.forEach(e => {
+    ctx.fillStyle = e.color;
+    ctx.fillRect(e.x, e.y, e.width, e.height);
+  });
+}
+
+// Main loop
+function loop() {
   update();
-  renderer.render(scene,camera);
+  draw();
+  requestAnimationFrame(loop);
 }
-animate();
 
-/* ================== RESIZE ================== */
-addEventListener("resize",()=>{
-  camera.aspect=innerWidth/innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth,innerHeight);
-});
-
+loop();
 </script>
 </body>
 </html>
