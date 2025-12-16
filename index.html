@@ -4,32 +4,17 @@
 <meta charset="UTF-8">
 <title>Playable Mini Fortnite</title>
 <style>
-body { margin:0; overflow:hidden; background:black; }
+body { margin:0; overflow:hidden; background:#87ceeb; }
 #ui {
-  position:fixed;
-  bottom:20px;
-  left:20px;
-  color:white;
-  font-family:Arial;
-  z-index:10;
+  position:fixed; bottom:20px; left:20px;
+  font-family:Arial; color:white; z-index:10;
 }
-.bar {
-  width:200px;
-  height:18px;
-  background:#333;
-  margin-bottom:6px;
-}
-.fill {
-  height:100%;
-}
+.bar { width:200px; height:18px; background:#333; margin-bottom:6px; }
+.fill { height:100%; }
 #miniMap {
-  position:fixed;
-  top:10px;
-  right:10px;
-  width:160px;
-  height:160px;
-  background:#111;
-  border:2px solid white;
+  position:fixed; top:10px; right:10px;
+  width:160px; height:160px;
+  background:#111; border:2px solid white;
   z-index:10;
 }
 </style>
@@ -40,14 +25,15 @@ body { margin:0; overflow:hidden; background:black; }
   <div class="bar"><div id="healthBar" class="fill" style="background:red;width:100%"></div></div>
   <div class="bar"><div id="shieldBar" class="fill" style="background:blue;width:50%"></div></div>
   🪵 Wood: <span id="wood">100</span><br>
-  🔫 Weapon: <span id="weapon">AR</span>
+  🔫 Weapon: <span id="weapon">AR</span><br>
+  🏗️ Mode: <span id="mode">Gun</span>
 </div>
 <canvas id="miniMap"></canvas>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
 <script>
 
-/* ================= SCENE ================= */
+/* ================== SETUP ================== */
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
 
@@ -56,109 +42,54 @@ const renderer = new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(innerWidth, innerHeight);
 document.body.appendChild(renderer.domElement);
 
-/* ================= LIGHT ================= */
 scene.add(new THREE.AmbientLight(0xffffff,0.6));
 const sun = new THREE.DirectionalLight(0xffffff,0.8);
 sun.position.set(100,200,100);
 scene.add(sun);
 
-/* ================= TERRAIN ================= */
-const MAP_SIZE = 300;
+/* ================== TERRAIN ================== */
+const MAP_SIZE = 400;
 const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE),
-  new THREE.MeshStandardMaterial({color:0x2e8b57})
+  new THREE.PlaneGeometry(MAP_SIZE,MAP_SIZE,50,50),
+  new THREE.MeshStandardMaterial({color:0x228B22})
 );
 ground.rotation.x = -Math.PI/2;
 scene.add(ground);
 
-/* ================= GRID ================= */
-const GRID = 4;
-const snap = v => Math.round(v / GRID) * GRID;
-
-/* ================= PLAYER ================= */
-const player = new THREE.Group();
-player.add(new THREE.Mesh(
-  new THREE.CapsuleGeometry(0.5,1.2),
-  new THREE.MeshStandardMaterial({color:0x0066ff})
-));
-player.position.set(0,1,0);
-scene.add(player);
-
-let health = 100;
-let shield = 50;
-let wood = 100;
-
-/* ================= CAMERA CONTROL ================= */
-let yaw = 0, pitch = 0;
-document.body.addEventListener("click",()=>document.body.requestPointerLock());
-document.addEventListener("mousemove",e=>{
-  if(document.pointerLockElement!==document.body) return;
-  yaw -= e.movementX * 0.002;
-  pitch -= e.movementY * 0.002;
-  pitch = Math.max(-0.6, Math.min(0.6, pitch));
-});
-
-/* ================= INPUT ================= */
-const keys = {};
-addEventListener("keydown",e=>keys[e.key.toLowerCase()] = true);
-addEventListener("keyup",e=>keys[e.key.toLowerCase()] = false);
-
-/* ================= BULLETS ================= */
-const bullets = [];
-const enemyBullets = [];
-
-function shoot(from, dir, speed, damage, list) {
-  const b = new THREE.Mesh(
-    new THREE.SphereGeometry(0.12),
-    new THREE.MeshBasicMaterial({color:0xffff00})
+/* ================== TREES & ROCKS ================== */
+function addTree(x,z){
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.3,0.3,2),
+    new THREE.MeshStandardMaterial({color:0x8B4513})
   );
-  b.position.copy(from);
-  b.userData = {dir, speed, damage};
-  scene.add(b);
-  list.push(b);
+  trunk.position.set(x,1,z);
+  const leaves = new THREE.Mesh(
+    new THREE.ConeGeometry(1,2,8),
+    new THREE.MeshStandardMaterial({color:0x006400})
+  );
+  leaves.position.set(x,3,z);
+  scene.add(trunk,leaves);
+}
+for(let i=0;i<30;i++){
+  addTree(Math.random()*MAP_SIZE-MAP_SIZE/2, Math.random()*MAP_SIZE-MAP_SIZE/2);
+}
+function addRock(x,z){
+  const rock = new THREE.Mesh(
+    new THREE.DodecahedronGeometry(1),
+    new THREE.MeshStandardMaterial({color:0x555555})
+  );
+  rock.position.set(x,0.5,z);
+  scene.add(rock);
+}
+for(let i=0;i<20;i++){
+  addRock(Math.random()*MAP_SIZE-MAP_SIZE/2, Math.random()*MAP_SIZE-MAP_SIZE/2);
 }
 
-addEventListener("mousedown",e=>{
-  if(e.button !== 0) return;
-  const dir = new THREE.Vector3(Math.sin(yaw),0,-Math.cos(yaw));
-  shoot(player.position.clone().add(new THREE.Vector3(0,1,0)), dir, 0.9, 10, bullets);
-});
-
-/* ================= AI ================= */
-const enemies = [];
-
-function makeEnemy(x,z){
-  const e = new THREE.Group();
-  e.add(new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.5,1.2),
-    new THREE.MeshStandardMaterial({color:0xff3333})
-  ));
-  e.position.set(x,1,z);
-  e.userData = {health:60, shootCooldown:0};
-  scene.add(e);
-  enemies.push(e);
-}
-
-for(let i=0;i<10;i++){
-  makeEnemy(Math.random()*MAP_SIZE-MAP_SIZE/2, Math.random()*MAP_SIZE-MAP_SIZE/2);
-}
-
-/* ================= BUILDINGS ================= */
-function building(x,z){
-  const mat = new THREE.MeshStandardMaterial({color:0xaaaaaa});
-  const floor1 = new THREE.Mesh(new THREE.BoxGeometry(10,4,10),mat);
-  floor1.position.set(x,2,z);
-  const floor2 = floor1.clone(); floor2.position.y = 6;
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(10,0.5,10),mat);
-  roof.position.set(x,8.5,z);
-  scene.add(floor1,floor2,roof);
-}
-building(30,30);
-building(-40,-20);
-
-/* ================= BUILDING SYSTEM ================= */
-let preview;
-const raycaster = new THREE.Raycaster();
+/* ================== GRID & BUILDING ================== */
+const GRID = 4;
+const snap = v => Math.round(v/GRID)*GRID;
+let buildMode=false;
+let preview=null;
 
 function makePreview(){
   if(preview) scene.remove(preview);
@@ -168,18 +99,86 @@ function makePreview(){
   );
   scene.add(preview);
 }
-makePreview();
 
-addEventListener("contextmenu",e=>{
-  e.preventDefault();
-  if(wood < 10) return;
-  const piece = preview.clone();
-  piece.material = new THREE.MeshStandardMaterial({color:0x8b5a2b});
-  scene.add(piece);
-  wood -= 10;
+/* ================== PLAYER ================== */
+const player = new THREE.Group();
+player.add(new THREE.Mesh(
+  new THREE.CapsuleGeometry(0.5,1.5),
+  new THREE.MeshStandardMaterial({color:0x0000ff})
+));
+player.position.set(0,1,0);
+scene.add(player);
+
+let health=100, shield=50, wood=100;
+let yaw=0, pitch=0, vy=0, onGround=true;
+
+/* ================== CAMERA ================== */
+document.body.addEventListener("click",()=>document.body.requestPointerLock());
+document.addEventListener("mousemove",e=>{
+  if(document.pointerLockElement!==document.body) return;
+  yaw -= e.movementX*0.002;
+  pitch -= e.movementY*0.002;
+  pitch = Math.max(-0.6, Math.min(0.6, pitch));
 });
 
-/* ================= UPDATE ================= */
+/* ================== INPUT ================== */
+const keys={};
+addEventListener("keydown",e=>{
+  keys[e.key.toLowerCase()]=true;
+  if(e.key.toLowerCase()==="b"){buildMode=!buildMode; makePreview(); document.getElementById("mode").textContent = buildMode?"Build":"Gun";}
+});
+addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
+
+/* ================== BULLETS ================== */
+const bullets=[];
+const enemyBullets=[];
+function shoot(from, dir, speed, damage, list){
+  const b = new THREE.Mesh(
+    new THREE.SphereGeometry(0.12),
+    new THREE.MeshBasicMaterial({color:0xffff00})
+  );
+  b.position.copy(from);
+  b.userData={dir,speed,damage};
+  scene.add(b);
+  list.push(b);
+}
+addEventListener("mousedown",e=>{
+  if(!buildMode && e.button===0){
+    const dir = new THREE.Vector3(Math.sin(yaw),0,-Math.cos(yaw));
+    shoot(player.position.clone().add(new THREE.Vector3(0,1,0)), dir, 1.0, 10, bullets);
+  }
+});
+
+/* ================== AI ================== */
+const enemies=[];
+function makeEnemy(x,z){
+  const e = new THREE.Group();
+  e.add(new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.5,1.5),
+    new THREE.MeshStandardMaterial({color:0xff3333})
+  ));
+  e.position.set(x,1,z);
+  e.userData={health:60,shootCooldown:0};
+  scene.add(e);
+  enemies.push(e);
+}
+for(let i=0;i<10;i++){
+  makeEnemy(Math.random()*MAP_SIZE-MAP_SIZE/2, Math.random()*MAP_SIZE-MAP_SIZE/2);
+}
+
+/* ================== TILTED BUILDINGS ================== */
+function building(x,z){
+  const mat = new THREE.MeshStandardMaterial({color:0xaaaaaa});
+  const floor1 = new THREE.Mesh(new THREE.BoxGeometry(10,4,10),mat); floor1.position.set(x,2,z);
+  const floor2 = floor1.clone(); floor2.position.y=6;
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(10,0.5,10),mat); roof.position.set(x,8.5,z);
+  scene.add(floor1,floor2,roof);
+}
+building(30,30);
+building(-40,-20);
+building(50,-50);
+
+/* ================== UPDATE LOOP ================== */
 function update(){
   const speed = 0.25;
   const forward = new THREE.Vector3(Math.sin(yaw),0,-Math.cos(yaw));
@@ -190,17 +189,25 @@ function update(){
   if(keys.a) player.position.add(right.clone().multiplyScalar(-speed));
   if(keys.d) player.position.add(right.clone().multiplyScalar(speed));
 
-  camera.position.copy(player.position)
-    .add(new THREE.Vector3(-Math.sin(yaw)*8,5,-Math.cos(yaw)*8));
-  camera.lookAt(player.position.x, player.position.y+1.5, player.position.z);
+  if(keys[" "] && onGround){vy=0.35; onGround=false;}
+  vy -=0.02; player.position.y+=vy;
+  if(player.position.y<1){player.position.y=1; vy=0; onGround=true;}
 
-  raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
-  const hit = raycaster.intersectObject(ground)[0];
-  if(hit){
-    preview.position.set(snap(hit.point.x),2,snap(hit.point.z));
-    preview.rotation.y = Math.round(yaw/(Math.PI/2))*(Math.PI/2);
+  camera.position.copy(player.position).add(new THREE.Vector3(-Math.sin(yaw)*8,5,-Math.cos(yaw)*8));
+  camera.lookAt(player.position.x,player.position.y+1.5,player.position.z);
+
+  /* Build preview */
+  if(buildMode){
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(0,0),camera);
+    const hit = raycaster.intersectObject(ground)[0];
+    if(hit){
+      preview.position.set(snap(hit.point.x),2,snap(hit.point.z));
+      preview.rotation.y = Math.round(yaw/(Math.PI/2))*(Math.PI/2);
+    }
   }
 
+  /* Player bullets hit AI */
   bullets.forEach((b,i)=>{
     b.position.add(b.userData.dir.clone().multiplyScalar(b.userData.speed));
     enemies.forEach((e,j)=>{
@@ -212,37 +219,37 @@ function update(){
     });
   });
 
+  /* AI movement and shooting */
   enemies.forEach(e=>{
-    let target = player;
-    enemies.forEach(o=>{
-      if(o!==e && o.position.distanceTo(e.position)<target.position.distanceTo(e.position)){
-        target = o;
-      }
-    });
+    let targets=[player,...enemies.filter(o=>o!==e)];
+    let target=targets.reduce((a,c)=> a.position.distanceTo(e.position)<c.position.distanceTo(e.position)?a:c);
     const dir = target.position.clone().sub(e.position).normalize();
-    e.position.add(dir.multiplyScalar(0.04));
+    e.position.add(dir.multiplyScalar(0.03));
     e.userData.shootCooldown--;
     if(e.userData.shootCooldown<=0){
       shoot(e.position.clone().add(new THREE.Vector3(0,1,0)), dir, 0.7, 8, enemyBullets);
-      e.userData.shootCooldown = 60;
+      e.userData.shootCooldown=60;
     }
   });
 
+  /* Enemy bullets hit player */
   enemyBullets.forEach((b,i)=>{
     b.position.add(b.userData.dir.clone().multiplyScalar(b.userData.speed));
     if(b.position.distanceTo(player.position)<1){
-      if(shield>0) shield-=8; else health-=8;
+      if(shield>0) shield-=b.userData.damage; else health-=b.userData.damage;
       scene.remove(b); enemyBullets.splice(i,1);
     }
   });
 
-  document.getElementById("healthBar").style.width = Math.max(health,0)+"%";
-  document.getElementById("shieldBar").style.width = Math.max(shield,0)+"%";
-  document.getElementById("wood").textContent = wood;
+  /* Update UI */
+  document.getElementById("healthBar").style.width=Math.max(health,0)+"%";
+  document.getElementById("shieldBar").style.width=Math.max(shield,0)+"%";
+  document.getElementById("wood").textContent=wood;
 
-  if(health<=0){ alert("You died"); location.reload(); }
+  if(health<=0){alert("You died"); location.reload();}
 }
 
+/* ================== ANIMATE ================== */
 function animate(){
   requestAnimationFrame(animate);
   update();
@@ -250,11 +257,13 @@ function animate(){
 }
 animate();
 
+/* ================== RESIZE ================== */
 addEventListener("resize",()=>{
-  camera.aspect = innerWidth/innerHeight;
+  camera.aspect=innerWidth/innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth,innerHeight);
 });
+
 </script>
 </body>
 </html>
